@@ -1,6 +1,6 @@
 # Mahajani
 
-**Passwordless FTP server that logs you in with one-time PGP/RSA key challenges, registers public keys in-band, and stops path-traversal cold. Pure Rust.**
+**Secure FTP server that logs you in with one-time PGP/RSA key challenges, registers public keys in-band, and stops path-traversal cold. Pure Rust.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-ec3013.svg)](LICENSE)
 [![Rust: 2024 Edition](https://img.shields.io/badge/Rust-2024_Edition-121316.svg)](Cargo.toml)
