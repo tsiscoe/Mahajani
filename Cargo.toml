@@ -2,7 +2,7 @@
 name = "mahajani"
 version = "1.1.0"
 edition = "2024"
-authors = ["Ty Siscoe"]
+authors = ["tsiscoe <tsiscoe@users.noreply.github.com>"]
 description = "OpenPGP & RSA Public-Key Challenge-Response Authenticated FTP Server with In-Band Provisioning and Traversal IDS"
 license = "MIT"
 readme = "README.md"
