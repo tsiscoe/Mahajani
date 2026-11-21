@@ -94,4 +94,9 @@ jobs:
       - name: Run cargo-audit
         run: |
           cargo install cargo-audit --version 0.23.0 --locked
-          cargo audit --ignore RUSTSEC-2026-0543 --deny warnings
+          # RUSTSEC-2023-0071 (rsa 0.9.10) and RUSTSEC-2026-0387 (crypto-bigint 0.5.5) are pinned
+          # transitively by pgp 0.21.x pending upstream RustCrypto migration (rpgp/rpgp#573).
+          # Mahajani's network auth path performs public-key verification only (no RSA decryption
+          # or network-exposed secret-key ECC operations). Remove ignores once pgp adopts rsa 0.10
+          # and elliptic-curve 0.14.
+          cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0387 --deny warnings
