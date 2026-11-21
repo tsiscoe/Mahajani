@@ -11,7 +11,7 @@ repository = "https://github.com/tsiscoe/mahajani"
 [dependencies]
 pgp = "0.21.0"
 rsa = "0.9"
-sha2 = "0.10"
+sha2 = "0.11"
 base64 = "0.22"
 hex = "0.4"
 rand = "0.8"
