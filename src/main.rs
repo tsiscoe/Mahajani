@@ -5,7 +5,7 @@ mod self_test;
 
 use auth::{AuthManager, AuthorizedKey};
 use ftp::FtpServer;
-use keygen::KeyPair1024;
+use keygen::KeyPair2048;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -36,12 +36,12 @@ fn main() {
 
     let auth_manager = AuthManager::new(&keys_dir);
 
-    // If no keys exist, generate a default alice 1024-bit key
+    // If no keys exist, generate a default alice 2048-bit key
     if !auth_manager.has_user("alice") {
-        println!("[SETUP] Generating default 1024-bit authorized keypair for 'alice'...");
-        let pair = KeyPair1024::generate();
-        auth_manager.register_key("alice", AuthorizedKey::Rsa1024(pair.verifying_key));
-        println!("[SETUP] Registered 'alice' with 1024-bit RSA key");
+        println!("[SETUP] Generating default 2048-bit authorized keypair for 'alice'...");
+        let pair = KeyPair2048::generate();
+        auth_manager.register_key("alice", AuthorizedKey::Rsa2048(pair.verifying_key));
+        println!("[SETUP] Registered 'alice' with 2048-bit RSA key");
     }
 
     let auth_arc = Arc::new(auth_manager);

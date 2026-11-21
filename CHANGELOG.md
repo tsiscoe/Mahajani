@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.2.0] - 2026-11-21
+
+### Changed & Hardened
+- **RSA-2048 Minimum Security Floor (`src/keygen.rs`, `src/auth.rs`, `src/main.rs`, `src/self_test.rs`, `tools/encrypt_payload.py`):**
+  - Graduated `KeyPair1024` -> `KeyPair2048` (`RSA_KEY_BITS = 2048`) and `AuthorizedKey::Rsa1024` -> `AuthorizedKey::Rsa2048`.
+  - Enforced `MIN_RSA_KEY_BITS = 2048` inside `AuthManager::verify_signature()` so sub-2048-bit RSA keys are explicitly rejected at verification time.
+  - Graduated `tools/encrypt_payload.py` OpenPGP authority key generation from 1024-bit to 2048-bit.
+- **Cargo & Lint Posture (`Cargo.toml`):**
+  - Added `[lints.rust] unsafe_code = "forbid"` to enforce zero-unsafe compilation across the crate.
+  - Added `[profile.dev.package.{num-bigint-dig, rsa}] opt-level = 3` so debug test runs generate 2048-bit RSA keys rapidly.
+- **CI Test Coverage & Supply-Chain Audit (`src/self_test.rs`, `.github/workflows/ci.yml`):**
+  - Added `#[cfg(test)] mod tests` to execute `cargo test` coverage for RSA-2048 sign/verify + single-use replay protection, sub-2048-bit RSA rejection, and the full 13-gate live TCP self-test harness.
+  - Scoped `cargo audit --deny warnings` ignores strictly to upstream-locked `pgp 0.21.x` transitive advisories (`RUSTSEC-2023-0071`, `RUSTSEC-2026-0387`, pending `rpgp/rpgp#573`).
+
+---
+
 ## [1.1.0] - 2026-10-29
 
 ### Security & Hardening (`red-dawn-remediated`)

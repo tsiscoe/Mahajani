@@ -1,6 +1,6 @@
 [package]
 name = "mahajani"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2024"
 authors = ["tsiscoe <tsiscoe@users.noreply.github.com>"]
 description = "OpenPGP & RSA Public-Key Challenge-Response Authenticated FTP Server with In-Band Provisioning and Traversal IDS"
@@ -15,3 +15,12 @@ sha2 = "0.10"
 base64 = "0.22"
 hex = "0.4"
 rand = "0.8"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+
+[profile.dev.package.rsa]
+opt-level = 3

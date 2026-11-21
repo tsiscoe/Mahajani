@@ -4,6 +4,7 @@ use pgp::composed::{CleartextSignedMessage, Deserializable, SignedPublicKey};
 use rand::RngCore;
 use rsa::pkcs1v15::VerifyingKey;
 use rsa::signature::Verifier;
+use rsa::traits::PublicKeyParts;
 use sha2::Sha256;
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
@@ -12,17 +13,19 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+/// Minimum accepted RSA key modulus size in bits (`>=2048`)
+pub const MIN_RSA_KEY_BITS: usize = 2048;
 /// Maximum outstanding unauthenticated session challenges (`SEC-06` bound)
 const MAX_ACTIVE_CHALLENGES: usize = 128;
 /// Challenge time-to-live before automatic expiry (`SEC-06` bound)
 const CHALLENGE_TTL: Duration = Duration::from_secs(60);
 
-/// Represents an authorized OpenPGP public key or 1024-bit RSA public key
+/// Represents an authorized OpenPGP public key or >=2048-bit RSA public key
 #[derive(Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum AuthorizedKey {
     OpenPgp(SignedPublicKey),
-    Rsa1024(VerifyingKey<Sha256>),
+    Rsa2048(VerifyingKey<Sha256>),
 }
 
 /// Authentication manager holding authorized keys and active session challenges
@@ -282,8 +285,16 @@ impl AuthManager {
                     Err("Expected OpenPGP cleartext signed message or base64 armored payload containing signed challenge nonce".to_string())
                 }
             }
-            AuthorizedKey::Rsa1024(verifying_key) => {
-                // Verify 1024-bit RSA signature directly over challenge
+            AuthorizedKey::Rsa2048(verifying_key) => {
+                let key_bits = verifying_key.as_ref().size() * 8;
+                if key_bits < MIN_RSA_KEY_BITS {
+                    return Err(format!(
+                        "Security violation: RSA key size ({} bits) below minimum {} bits",
+                        key_bits, MIN_RSA_KEY_BITS
+                    ));
+                }
+
+                // Verify >=2048-bit RSA signature directly over challenge
                 let sig_bytes = if let Ok(b) = BASE64.decode(raw_input) {
                     b
                 } else if let Ok(b) = hex::decode(raw_input) {
@@ -297,7 +308,7 @@ impl AuthManager {
 
                 verifying_key
                     .verify(challenge.as_bytes(), &sig)
-                    .map_err(|_| "RSA 1024 signature verification failed".to_string())?;
+                    .map_err(|_| "RSA-2048 signature verification failed".to_string())?;
 
                 Ok(())
             }

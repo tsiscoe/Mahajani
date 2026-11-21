@@ -1,6 +1,6 @@
 # Mahajani Architecture & Cryptographic Specification
 
-This document details how **Mahajani** operates internally: its asymmetric challenge-response authentication protocol (inspired by historical Indian **Hundi** credit vouchers), dual-mode OpenPGP / RSA-1024 signature verification engine, in-band public-key enrollment rules, virtual root path-traversal Intrusion Detection System (IDS), bounded socket concurrency model, and threat posture.
+This document details how **Mahajani** operates internally: its asymmetric challenge-response authentication protocol (inspired by historical Indian **Hundi** credit vouchers), dual-mode OpenPGP / RSA-2048 signature verification engine, in-band public-key enrollment rules, virtual root path-traversal Intrusion Detection System (IDS), bounded socket concurrency model, and threat posture.
 
 ---
 
@@ -38,11 +38,11 @@ sequenceDiagram
     S->>A: has_user(username) (Checks HashMap -> Disk .asc/.pgp/.pub)
     A->>A: issue_challenge(session_id) -> 16B OsRng/ThreadRng
     S-->>C: 331 Challenge: speakeasy-nonce-<32_hex>. Sign with OpenPGP key and submit in PASS.
-    C->>C: Sign challenge nonce with Private Key (OpenPGP or RSA-1024 SHA-256)
+    C->>C: Sign challenge nonce with Private Key (OpenPGP or RSA-2048 SHA-256)
     C->>S: PASS <CleartextSignedMessage or Base64 Signature>
     S->>A: verify_signature(session_id, username, pass_input)
     A->>A: Atomically remove(session_id) from active_challenges
-    A->>A: Verify OpenPGP CleartextSignedMessage OR RSA-1024 PKCS#1v15 Signature
+    A->>A: Verify OpenPGP CleartextSignedMessage OR RSA-2048 PKCS#1v15 Signature
     alt Signature Valid & Nonce Matches
         S-->>C: 230 OpenPGP authentication successful. Welcome!
     else Signature Invalid or Forged
@@ -55,9 +55,9 @@ sequenceDiagram
 - **`AuthorizedKey::OpenPgp(SignedPublicKey)`:** Parsed via the pure-Rust `pgp` crate (`v0.21.0`, RFC 4880 / RFC 9580). Loaded from `.asc`, `.pgp`, or `.pub` files in `./authorized_keys/` or registered dynamically via `SITE REGISTER`.
   - During `PASS`, `verify_signature` accepts either a raw single-line/escaped `-----BEGIN PGP SIGNED MESSAGE-----` payload or a **Base64-encoded** ASCII-armored `CleartextSignedMessage`.
   - It verifies both that `msg.text().trim() == challenge.trim()` and that `msg.verify(&pubkey)` succeeds cryptographically.
-- **`AuthorizedKey::Rsa1024(VerifyingKey<Sha256>)`:** Uses `rsa` (`v0.9`) and `sha2` (`v0.10`) `PKCS#1 v1.5` with `SHA-256`.
-  - Used by the built-in `KeyPair1024` generator (`src/keygen.rs`) for fast default bootstrapping (`alice`) and high-speed automated self-testing (`--test`).
-  - During `PASS`, `verify_signature` decodes the Base64 (or Hex) signature bytes and validates `verifying_key.verify(challenge.as_bytes(), &sig)`.
+- **`AuthorizedKey::Rsa2048(VerifyingKey<Sha256>)`:** Uses `rsa` (`v0.9`) and `sha2` (`v0.10`) `PKCS#1 v1.5` with `SHA-256`, enforcing a strict `MIN_RSA_KEY_BITS = 2048` modulus floor inside `verify_signature()`.
+  - Used by the built-in `KeyPair2048` generator (`src/keygen.rs`) for fast default bootstrapping (`alice`) and high-speed automated self-testing (`--test`).
+  - During `PASS`, `verify_signature` checks `verifying_key.as_ref().size() * 8 >= 2048`, decodes the Base64 (or Hex) signature bytes, and validates `verifying_key.verify(challenge.as_bytes(), &sig)`.
 
 ### 2.2 In-Band Key Enrollment Hardening (`SITE REGISTER`)
 When a client invokes `SITE REGISTER <username> <pubkey_payload>` (or `SITE PUBKEY`):
@@ -113,7 +113,7 @@ Running `cargo run --release -- --test` spawns an isolated background server on 
 
 | Gate | Category | Verification Assertion |
 | :--- | :--- | :--- |
-| **Gate 1** | Keygen & Setup | Generates a 1024-bit RSA keypair for authorized user `alice` and an unauthorized attacker keypair for `mallory`. |
+| **Gate 1** | Keygen & Setup | Generates a 2048-bit RSA keypair for authorized user `alice` and an unauthorized attacker keypair for `mallory`. |
 | **Gate 2** | Pre-Auth Guard | Connects over TCP, verifies `220` banner, issues unauthenticated `PWD`, and asserts `530` rejection. |
 | **Gate 3** | Forged Signature Rejection | Requests `USER alice` (`331` nonce), signs `alice`'s challenge using `mallory`'s private key, submits `PASS`, and asserts `530` rejection. |
 | **Gate 4** | Valid Asymmetric Login | Requests fresh `USER alice` nonce, signs with `alice`'s private key, submits `PASS`, and asserts `230` authentication success. |
@@ -134,7 +134,7 @@ Running `cargo run --release -- --test` spawns an isolated background server on 
 | Threat Vector | Mitigated? | Mechanism in Mahajani |
 | :--- | :--- | :--- |
 | **Wire Sniffing / Password Replay** | **Yes** | Zero passwords exist. `USER` issues a 128-bit random nonce (`speakeasy-nonce-<hex32>`) consumed atomically on the first `PASS` attempt. |
-| **Forged Signature / Impersonation** | **Yes** | Verified against registered OpenPGP (`SignedPublicKey`) or RSA-1024 (`VerifyingKey<Sha256>`) public keys before flipping `session.authenticated = true`. |
+| **Forged Signature / Impersonation** | **Yes** | Verified against registered OpenPGP (`SignedPublicKey`) or >=2048-bit RSA (`VerifyingKey<Sha256>`) public keys before flipping `session.authenticated = true`. |
 | **Unauthenticated Command Execution** | **Yes** | Match guard `_ if !self.authenticated => 530` blocks `PWD`, `CWD`, `PASV`, `LIST`, `RETR`, `STOR`, `DELE`, and `SITE DATATOKEN`. |
 | **Relative Dot-Segment & Drive-Letter Traversal** | **Yes** | `resolve_safe_path()` blocks `:`, leading `/` or `\`, `\0`, stack underflow on `..`, and verifies fail-closed `canonicalize()` prefix confinement. |
 | **Existing User Key Overwrite via `SITE REGISTER`** | **Yes** | `register_pubkey_content()` holds a single registry mutex lock and persists keys via `OpenOptions::create_new(true)` (`SEC-09`). |

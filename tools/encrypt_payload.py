@@ -26,8 +26,8 @@ def generate_authority_key(key_dir="."):
         key, _ = pgpy.PGPKey.from_file(priv_path)
         return key
 
-    print("[*] Generating 1024-bit RSA OpenPGP Authority Key...")
-    key = pgpy.PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 1024)
+    print("[*] Generating 2048-bit RSA OpenPGP Authority Key...")
+    key = pgpy.PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 2048)
     uid = pgpy.PGPUID.new("Mahajani Service Authority")
     key.add_uid(
         uid,

@@ -53,7 +53,7 @@ Before deploying or exposing the server, execute the built-in end-to-end TCP ver
 cargo run --release -- --test
 ```
 
-This spawns an ephemeral test instance on `127.0.0.1:22123`, generates valid (`alice`) and forged (`mallory`) 1024-bit RSA keypairs, and verifies all 13 runtime and Red-Dawn security gates (banner, unauthenticated command blocking, forged signature rejection, valid challenge-response login, `PASV`/`STOR`/`RETR` binary transfer integrity, `CWD`/`STOR`/`DELE` path traversal blocking, `SITE REGISTER` atomic overwrite/traversal protection, `SEC-06` disconnect challenge eviction, `SEC-08` `SITE DATATOKEN` hijack rejection, and `SEC-10`/`SEC-11` Windows device/alias rejection).
+This spawns an ephemeral test instance on `127.0.0.1:22123`, generates valid (`alice`) and forged (`mallory`) 2048-bit RSA keypairs, and verifies all 13 runtime and Red-Dawn security gates (banner, unauthenticated command blocking, forged signature rejection, valid challenge-response login, `PASV`/`STOR`/`RETR` binary transfer integrity, `CWD`/`STOR`/`DELE` path traversal blocking, `SITE REGISTER` atomic overwrite/traversal protection, `SEC-06` disconnect challenge eviction, `SEC-08` `SITE DATATOKEN` hijack rejection, and `SEC-10`/`SEC-11` Windows device/alias rejection).
 
 ---
 
@@ -72,7 +72,7 @@ cargo run --release
 cargo run --release -- --addr 127.0.0.1:2121
 ```
 
-> **Note:** If `./authorized_keys/` does not contain a key for `alice` on startup, Mahajani automatically generates an in-memory 1024-bit RSA keypair for `alice` so local health checks can run immediately.
+> **Note:** If `./authorized_keys/` does not contain a key for `alice` on startup, Mahajani automatically generates an in-memory 2048-bit RSA keypair for `alice` so local health checks can run immediately.
 
 ### Three Ways to Authorize a Client Public Key
 
@@ -93,7 +93,7 @@ cargo run --release -- --addr 127.0.0.1:2121
 ## 5. Companion Operational Scripts (`tools/`)
 
 ### 5.1 Encrypting & Signing Target Payloads (`tools/encrypt_payload.py`)
-Generates a 1024-bit RSA OpenPGP Service Authority keypair (`authority_secret.asc` / `authority_public.asc`) and seals any file into a signed + AES-256 encrypted `.pgp` container:
+Generates a 2048-bit RSA OpenPGP Service Authority keypair (`authority_secret.asc` / `authority_public.asc`) and seals any file into a signed + AES-256 encrypted `.pgp` container:
 
 ```powershell
 python tools/encrypt_payload.py ./raw_secret.bin -o ./ftp_data/target.pgp -k ./keys

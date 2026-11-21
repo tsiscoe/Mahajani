@@ -1,6 +1,6 @@
 use crate::auth::{AuthManager, AuthorizedKey};
 use crate::ftp::{FtpServer, resolve_safe_path};
-use crate::keygen::KeyPair1024;
+use crate::keygen::KeyPair2048;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -19,15 +19,15 @@ pub fn run_self_test() {
     fs::create_dir_all(&test_dir).unwrap();
     fs::create_dir_all(&keys_dir).unwrap();
 
-    // 1. Generate authorized 1024-bit keypair for 'alice'
-    println!("[1/13] Generating 1024-bit keypair for 'alice' and attacker 'mallory'...");
-    let alice_keys = KeyPair1024::generate();
-    let mallory_keys = KeyPair1024::generate();
+    // 1. Generate authorized 2048-bit keypair for 'alice'
+    println!("[1/13] Generating 2048-bit keypair for 'alice' and attacker 'mallory'...");
+    let alice_keys = KeyPair2048::generate();
+    let mallory_keys = KeyPair2048::generate();
 
     let auth_mgr = AuthManager::new(&keys_dir);
     auth_mgr.register_key(
         "alice",
-        AuthorizedKey::Rsa1024(alice_keys.verifying_key.clone()),
+        AuthorizedKey::Rsa2048(alice_keys.verifying_key.clone()),
     );
     let auth_arc = Arc::new(auth_mgr);
 
@@ -107,8 +107,8 @@ pub fn run_self_test() {
         resp.trim()
     );
 
-    // 4. Test Legitimate OpenPGP / 1024-bit Key Authentication
-    println!("[4/13] Authenticating Alice with valid 1024-bit signed challenge...");
+    // 4. Test Legitimate OpenPGP / 2048-bit Key Authentication
+    println!("[4/13] Authenticating Alice with valid 2048-bit signed challenge...");
     stream.write_all(b"USER alice\r\n").unwrap();
     resp.clear();
     reader.read_line(&mut resp).unwrap();
@@ -374,4 +374,93 @@ fn parse_pasv_port(resp: &str) -> u16 {
     let p1: u16 = parts[4].parse().unwrap();
     let p2: u16 = parts[5].parse().unwrap();
     (p1 << 8) | p2
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keygen::RSA_KEY_BITS;
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use rsa::RsaPrivateKey;
+    use rsa::pkcs1v15::SigningKey;
+    use rsa::signature::{Keypair, RandomizedSigner, SignatureEncoding};
+    use rsa::traits::PublicKeyParts;
+    use sha2::Sha256;
+
+    #[test]
+    fn test_rsa2048_sign_verify_and_single_use_replay_block() {
+        let keys_dir = PathBuf::from("./target/test_unit_rsa2048");
+        let _ = fs::remove_dir_all(&keys_dir);
+        let auth_mgr = AuthManager::new(&keys_dir);
+
+        let alice = KeyPair2048::generate();
+        assert!(
+            alice.verifying_key.as_ref().size() * 8 >= RSA_KEY_BITS,
+            "Generated key must meet RSA-2048 floor"
+        );
+        let mallory = KeyPair2048::generate();
+        auth_mgr.register_key("alice", AuthorizedKey::Rsa2048(alice.verifying_key.clone()));
+
+        let sess = "unit_sess_rsa2048";
+        let challenge = auth_mgr.issue_challenge(sess);
+        let valid_sig = alice.sign_challenge(&challenge);
+
+        assert!(
+            auth_mgr.verify_signature(sess, "alice", &valid_sig).is_ok(),
+            "Valid RSA-2048 signature must pass verification"
+        );
+        assert!(
+            auth_mgr
+                .verify_signature(sess, "alice", &valid_sig)
+                .is_err(),
+            "Replaying consumed challenge signature must fail"
+        );
+
+        let challenge2 = auth_mgr.issue_challenge(sess);
+        let forged_sig = mallory.sign_challenge(&challenge2);
+        assert!(
+            auth_mgr
+                .verify_signature(sess, "alice", &forged_sig)
+                .is_err(),
+            "Forged RSA-2048 signature from wrong key must fail"
+        );
+
+        let _ = fs::remove_dir_all(&keys_dir);
+    }
+
+    #[test]
+    fn test_rejects_sub_2048_bit_rsa_key() {
+        let keys_dir = PathBuf::from("./target/test_unit_reject_1024");
+        let _ = fs::remove_dir_all(&keys_dir);
+        let auth_mgr = AuthManager::new(&keys_dir);
+
+        let mut rng = rand::thread_rng();
+        let legacy_priv = RsaPrivateKey::new(&mut rng, 1024).unwrap();
+        let legacy_signing = SigningKey::<Sha256>::new(legacy_priv);
+        let legacy_verifying = legacy_signing.verifying_key();
+
+        auth_mgr.register_key("legacy_user", AuthorizedKey::Rsa2048(legacy_verifying));
+
+        let sess = "unit_sess_reject_1024";
+        let challenge = auth_mgr.issue_challenge(sess);
+        let sig = legacy_signing.sign_with_rng(&mut rng, challenge.as_bytes());
+        let sig_b64 = BASE64.encode(sig.to_vec());
+
+        let err = auth_mgr
+            .verify_signature(sess, "legacy_user", &sig_b64)
+            .expect_err("Sub-2048-bit RSA key must be rejected");
+        assert!(
+            err.contains("below minimum 2048 bits"),
+            "Unexpected error message: {}",
+            err
+        );
+
+        let _ = fs::remove_dir_all(&keys_dir);
+    }
+
+    #[test]
+    fn test_13_gate_e2e_self_test() {
+        run_self_test();
+    }
 }

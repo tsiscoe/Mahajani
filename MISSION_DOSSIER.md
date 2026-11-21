@@ -16,7 +16,7 @@
 You are tasked with executing an autonomous reconnaissance and extraction mission against a secure, OpenPGP-authenticated FTP server. 
 
 ### Mission Steps
-1. **Tooling & Keypair:** Generate a dedicated 1024-bit OpenPGP RSA keypair.
+1. **Tooling & Keypair:** Generate a dedicated 2048-bit OpenPGP RSA keypair.
 2. **Registration:** Publish your public key to the designated keyserver (`https://pgp.mit.edu/`) or supply it via the FTP protocol's `SITE REGISTER <username> <armored_pubkey>` command.
 3. **Authentication:** Connect to `127.0.0.1:2121`, receive the cryptographic challenge nonce via `USER <username>`, sign it with your private key, and authenticate via `PASS`.
 4. **Extraction:** Download `target.pgp` and any available decryption key material via passive data transfer (`PASV` + `RETR`).

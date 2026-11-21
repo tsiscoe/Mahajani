@@ -3,7 +3,7 @@
 [![CI](https://github.com/tsiscoe/Mahajani/actions/workflows/ci.yml/badge.svg)](https://github.com/tsiscoe/Mahajani/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-ec3013.svg)](LICENSE)
 [![Rust: 2024 Edition](https://img.shields.io/badge/Rust-2024_Edition-121316.svg)](Cargo.toml)
-[![Crypto: OpenPGP RFC 9580 + RSA-1024](https://img.shields.io/badge/Auth-OpenPGP_RFC_9580_%2B_RSA--1024-ec3013.svg)](ARCHITECTURE.md)
+[![Crypto: OpenPGP RFC 9580 + RSA-2048](https://img.shields.io/badge/Auth-OpenPGP_RFC_9580_%2B_RSA--2048-ec3013.svg)](ARCHITECTURE.md)
 [![Protocol: RFC 959 + SITE REGISTER](https://img.shields.io/badge/Protocol-RFC_959_%2B_SITE_REGISTER-121316.svg)](src/ftp.rs)
 
 ---
@@ -17,7 +17,7 @@ Traditional File Transfer Protocol (RFC 959) implementations fail at two critica
 2. **Path Traversal & Out-of-Band Root Escape:** Naive custom file servers frequently succumb to relative dot-segment (`..\..`), Windows drive-letter (`C:\`), or null-byte injection across `CWD`, `RETR`, `STOR`, and `DELE` commands, allowing attackers to escape the virtual root directory.
 
 **Mahajani** replaces static secrets with an asymmetric **Hundi Challenge-Response Protocol** and a strict in-band confinement engine:
-- **Ephemeral CSPRNG Challenge-Response (`USER` -> `331 Challenge` -> `PASS <Signature>`):** Issuing `USER <username>` never prompts for a static password. Instead, `AuthManager` generates a 128-bit CSPRNG challenge token (`speakeasy-nonce-<32_hex_chars>`) bound to the session ID. To authenticate, the client must sign the exact nonce using their private key and submit either an **OpenPGP Cleartext Signed Message** (`-----BEGIN PGP SIGNED MESSAGE-----`, RFC 4880 / RFC 9580) or a **PKCS#1 v1.5 SHA-256 RSA-1024 signature** (Base64 or Hex encoded) via `PASS`. Immediately upon verification attempt, the nonce is atomically consumed to guarantee strict single-use replay protection.
+- **Ephemeral CSPRNG Challenge-Response (`USER` -> `331 Challenge` -> `PASS <Signature>`):** Issuing `USER <username>` never prompts for a static password. Instead, `AuthManager` generates a 128-bit CSPRNG challenge token (`speakeasy-nonce-<32_hex_chars>`) bound to the session ID. To authenticate, the client must sign the exact nonce using their private key and submit either an **OpenPGP Cleartext Signed Message** (`-----BEGIN PGP SIGNED MESSAGE-----`, RFC 4880 / RFC 9580) or a **PKCS#1 v1.5 SHA-256 RSA-2048 signature** (Base64 or Hex encoded) via `PASS`. Immediately upon verification attempt, the nonce is atomically consumed to guarantee strict single-use replay protection.
 - **In-Band Public Key Provisioning (`SITE REGISTER`) & Dynamic Hot-Reloading:** Clients can enroll ASCII-armored or Base64-wrapped OpenPGP public keys directly over the control socket via `SITE REGISTER <username> <pubkey>` (or `SITE PUBKEY`), with built-in overwrite protection and username path-traversal sanitization. `AuthManager` also dynamically resolves `.asc`, `.pgp`, and `.pub` keyfiles dropped into `./authorized_keys/` or fetched from HKP keyservers (`https://pgp.mit.edu/`) with zero server downtime.
 - **Active In-Band Traversal IDS & Resource Hardening:** Every filesystem operation (`CWD`, `LIST`, `RETR`, `STOR`, `DELE`) passes through `resolve_safe_path()`, which strips drive colons, leading slashes, and null bytes, normalizes component walks, verifies `canonicalize()` prefix confinement against the virtual root (`./ftp_data`), and logs `[SECURITY BREACH][TRAVERSAL]` alerts. Control connections enforce a 64-worker `AtomicUsize` concurrency ceiling (`ConnectionGuard`), 30-second socket read/write timeouts, and a 4,096-byte line buffer cap (`read_line_capped`) to neutralize memory-exhaustion DoS vectors.
 
@@ -30,7 +30,7 @@ flowchart TD
     Client["FTP Client / Autonomous Agent\n(TCP Control Socket :2121)"] -->|"1. SITE REGISTER <user> <armored_pubkey>\n(or tools/fetch_keyserver.py)"| KeyStore[("Authorized Key Registry\n• In-Memory Mutex<HashMap>\n• ./authorized_keys/*.{asc,pgp,pub}")]
     Client -->|"2. USER <username>"| Session["FtpSession State Machine\n• 64-Conn Atomic Guard\n• 4096B Line Cap + 30s Timeout"]
     Session -->|"3. 331 Challenge: speakeasy-nonce-<hex32>"| Client
-    Client -->|"4. PASS <OpenPGP CleartextSignedMessage\nor Base64 RSA-1024 Signature>"| Verifier{"AuthManager::verify_signature\n(Atomic Nonce Consumption)"}
+    Client -->|"4. PASS <OpenPGP CleartextSignedMessage\nor Base64 RSA-2048 Signature>"| Verifier{"AuthManager::verify_signature\n(Atomic Nonce Consumption)"}
     KeyStore --> Verifier
     Verifier -->|"Invalid Signature / Replay"| Reject["530 Authentication Failed\n(Session Stays Unauthenticated)"]
     Verifier -->|"Valid Signature Over Nonce"| AuthOK["230 OpenPGP Auth Successful"]
@@ -77,7 +77,7 @@ Mahajani implements RFC 959 control semantics augmented with public-key challeng
 | `SITE PUBKEY` | No (Pre-Auth) | `SITE PUBKEY <user> <pubkey>` | Alias for `SITE REGISTER`. |
 | `SITE DATATOKEN` | **Yes** | `SITE DATATOKEN <token>` | Arms a single-use data-channel binding token (`SEC-08`) requiring the next passive data socket to present `TOKEN <token>\r\n` before streaming bytes (`200` or `425`). |
 | `USER` | No | `USER <username>` | Verifies user exists in memory or `./authorized_keys/`, generates a 128-bit CSPRNG nonce (`60s` TTL, `128`-entry cap), and replies `331 Challenge: speakeasy-nonce-<hex32>. Sign with OpenPGP key and submit in PASS.` |
-| `PASS` | No (Completes Auth) | `PASS <signed_payload>` | Atomically consumes the session nonce and verifies either an OpenPGP `CleartextSignedMessage` (raw or Base64-wrapped) or an RSA-1024 `PKCS#1 v1.5` signature. Replies `230` on match or `530` on failure. |
+| `PASS` | No (Completes Auth) | `PASS <signed_payload>` | Atomically consumes the session nonce and verifies either an OpenPGP `CleartextSignedMessage` (raw or Base64-wrapped) or an RSA-2048 `PKCS#1 v1.5` signature. Replies `230` on match or `530` on failure. |
 | `FEAT` | No | `FEAT` | Lists supported protocol extensions: `UTF8`, `PASV`, `REST STREAM`, `SITE REGISTER`, `SITE DATATOKEN`. |
 | `SYST` | No | `SYST` | Replies `215 UNIX Type: L8 (speakeasy Core)`. |
 | `PWD` | **Yes** | `PWD` | Returns the current normalized virtual directory relative to `./ftp_data` (`257`). |
@@ -102,7 +102,7 @@ cargo run --release -- --test
 # Start the server on a custom bind address/port
 cargo run --release -- --addr 127.0.0.1:2121
 
-# Encrypt and sign an artifact into an OpenPGP container (target.pgp) using a 1024-bit authority key
+# Encrypt and sign an artifact into an OpenPGP container (target.pgp) using a 2048-bit authority key
 python tools/encrypt_payload.py ./secret_document.bin -o ./ftp_data/target.pgp -k ./keys
 
 # Fetch and authorize a user's OpenPGP public key from an HKP keyserver (e.g. pgp.mit.edu)
@@ -118,7 +118,7 @@ python tools/surveillance_worker.py ./ftp_data ./authorized_keys -l .audit.log -
 
 | Document | Description |
 | :--- | :--- |
-| [**ARCHITECTURE.md**](ARCHITECTURE.md) | Deep technical specification: OpenPGP & RSA-1024 challenge-response protocol, `SITE REGISTER` & `SITE DATATOKEN` hardening, `resolve_safe_path` traversal IDS, 13-gate verification matrix, and threat model. |
+| [**ARCHITECTURE.md**](ARCHITECTURE.md) | Deep technical specification: OpenPGP & RSA-2048 challenge-response protocol, `SITE REGISTER` & `SITE DATATOKEN` hardening, `resolve_safe_path` traversal IDS, 13-gate verification matrix, and threat model. |
 | [**INSTALL.md**](INSTALL.md) | Step-by-step installation, Rust & Python prerequisites, directory layout setup, and troubleshooting. |
 | [**CONTRIBUTING.md**](CONTRIBUTING.md) | Developer workflow, security hardening invariants (`SEC-06` through `SEC-11`), and verification requirements. |
 | [**CHANGELOG.md**](CHANGELOG.md) | Release history and security hardening milestones. |
